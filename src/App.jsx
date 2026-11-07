@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { useState, useMemo, useEffect } from 'react';
-import {
+import { 
   Shield, AlertTriangle, Grid, Briefcase, Sparkles, Key, Download, 
   RefreshCw, Activity, Database, Search, ArrowUp, X, Eye, Info, 
   ChevronRight, FileCode, ServerCrash, Lock, CheckCircle, FileWarning
@@ -519,7 +519,7 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
 
         addHeader();
 
-        // --- PORTADA ---
+        // --- PORTADA CORREGIDA DINÁMICAMENTE ---
         doc.setFillColor(245, 247, 250);
         doc.setDrawColor(210, 220, 230);
         doc.roundedRect(margin, y, contentWidth, 55, 4, 4, 'FD');
@@ -532,13 +532,15 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(100, 116, 139);
-        // Acortamos el texto para que no choque
-        doc.text(`Fecha: ${new Date().toLocaleString('es-ES')}  |  Clasificación:`, margin + 15, y + 42);
         
-        // Lo movemos mucho más a la derecha para que no pise nada
+        const labelText = `Fecha: ${new Date().toLocaleString('es-ES')}  |  Clasificación: `;
+        doc.text(labelText, margin + 15, y + 42);
+
+        const labelWidth = doc.getTextWidth(labelText);
+
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(220, 38, 38);
-        doc.text('CRÍTICO', margin + 380, y + 42);
+        doc.text('CRÍTICO', margin + 15 + labelWidth, y + 42);
         y += 75;
 
         renderSectionHeader('1. Resumen Ejecutivo');
