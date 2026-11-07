@@ -382,7 +382,7 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
     }, 800);
   };
 
-  const generatePdfReport = () => {
+    const generatePdfReport = () => {
     if (!aiReportData) return;
     setIsPdfGenerating(true);
 
@@ -458,8 +458,12 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
           drawTableHeader();
 
           data.forEach((row, index) => {
-            const linesCol1 = doc.splitTextToSize(row[0], colWidths[0] - 16);
-            const linesCol2 = doc.splitTextToSize(row[1], colWidths[1] - 16);
+            // Convertir a string por si viene algún null o undefined
+            const rowText1 = String(row[0] || '');
+            const rowText2 = String(row[1] || '');
+
+            const linesCol1 = doc.splitTextToSize(rowText1, colWidths[0] - 16);
+            const linesCol2 = doc.splitTextToSize(rowText2, colWidths[1] - 16);
             const maxLines = Math.max(linesCol1.length, linesCol2.length);
             const rowHeight = (maxLines * 12) + (rowPadding * 2);
 
@@ -493,7 +497,7 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
         };
 
         const renderSlaBox = (title, slaText, contentText, borderR, borderG, borderB) => {
-          const lines = doc.splitTextToSize(contentText, contentWidth - 20);
+          const lines = doc.splitTextToSize(String(contentText), contentWidth - 20);
           const boxHeight = lines.length * 13 + 30;
           
           if (y + boxHeight > pageHeight - 40) forceNewPage();
@@ -520,6 +524,7 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
 
         addHeader();
 
+        // --- PORTADA ---
         doc.setFillColor(245, 247, 250);
         doc.setDrawColor(210, 220, 230);
         doc.roundedRect(margin, y, contentWidth, 55, 4, 4, 'FD');
@@ -534,11 +539,13 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
         doc.setTextColor(100, 116, 139);
         doc.text(`Fecha de Emisión: ${new Date().toLocaleString('es-ES')}  |  Clasificación: `, margin + 15, y + 42);
         
+        // Forzamos la posición exacta del texto CRÍTICO
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(220, 38, 38);
-        doc.text('CRÍTICO', margin + 230, y + 42);
+        doc.text('CRÍTICO', margin + 240, y + 42);
         y += 75;
 
+        // Sección 1
         renderSectionHeader('1. Resumen Ejecutivo');
         renderTable(
           ['Métrica', 'Detalle'],
@@ -548,6 +555,7 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
           ]
         );
 
+        // Sección 2
         forceNewPage();
         renderSectionHeader('2. Análisis Técnico Forense de Amenazas');
         renderTable(
@@ -560,6 +568,7 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
           ]
         );
 
+        // Sección 3
         forceNewPage();
         renderSectionHeader('3. Matriz de Indicadores de Compromiso (IoCs)');
         renderTable(
@@ -572,6 +581,7 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
           ]
         );
 
+        // Sección 4
         forceNewPage();
         renderSectionHeader('4. Plan de Remediación y Mitigación (SLA)');
         renderSlaBox('Acciones Inmediatas', 'SLA < 1 hora', aiReportData.slaImmediate, 220, 38, 38);
