@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect } from 'react';
 import {
   Shield, AlertTriangle, Grid, Briefcase, Sparkles, Key, Download, 
   RefreshCw, Activity, Database, Search, ArrowUp, X, Eye, Info, 
-  ChevronRight, FileCode, ServerCrash, Lock
+  ChevronRight, FileCode, ServerCrash, Lock, CheckCircle, FileWarning
 } from 'lucide-react';
 
 export default function App() {
@@ -11,7 +11,6 @@ export default function App() {
   const [logs, setLogs] = useState([]);
   const [fileName, setFileName] = useState('');
   
-  // Variable de entorno segura
   const [customGroqKey, setCustomGroqKey] = useState(import.meta.env.VITE_GROQ_API_KEY || '');
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -29,7 +28,6 @@ export default function App() {
   const [aiErrorMessage, setAiErrorMessage] = useState('');
   const [isPdfGenerating, setIsPdfGenerating] = useState(false);
 
-  // Cargador de la librería jsPDF
   useEffect(() => {
     if (!window.jspdf) {
       const script = document.createElement('script');
@@ -39,13 +37,12 @@ export default function App() {
     }
   }, []);
 
-    const handleFileUpload = (e) => {
+  const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     setFileName(file.name);
 
-    // Si es un Excel (.xlsx o .xls), usamos la librería XLSX
     if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
       const reader = new FileReader();
       reader.onload = (evt) => {
@@ -53,30 +50,45 @@ export default function App() {
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        // Convierte el Excel a un array de objetos (JSON)
         const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
         const parsedLogs = data.map((row, idx) => {
-          // Limpiamos los nombres de las columnas a minúsculas para encontrarlas fácil
-          const obj = {};
-          Object.keys(row).forEach(k => obj[k.trim().toLowerCase()] = row[k]);
+          const getVal = (keys) => {
+            for (let key of keys) {
+              const foundKey = Object.keys(row).find(k => k.toLowerCase() === key.toLowerCase());
+              if (foundKey && row[foundKey]) return String(row[foundKey]).trim();
+            }
+            return '';
+          };
 
-          const evtType = obj.event_type || obj.evento || 'Actividad Anómala';
-          const sev = obj.severity || obj.severidad || 'Crítico';
-          const mitre = obj.mitre_id || obj.mitre || 'T1059';
+          const sevRaw = getVal(['severity', 'severidad', 'level', 'nivel']).toLowerCase();
+          let sev = 'Informacional';
+          if (sevRaw.includes('critic') || sevRaw.includes('high') || sevRaw.includes('alta') || sevRaw.includes('alto')) sev = 'Crítico';
+          else if (sevRaw.includes('warn') || sevRaw.includes('medium') || sevRaw.includes('media') || sevRaw.includes('medio')) sev = 'Alto';
+          else if (sevRaw.includes('fail') || sevRaw.includes('error') || sevRaw.includes('bajo')) sev = 'Medio';
+
+          const desc = getVal(['event_description', 'descripcion', 'message', 'msg', 'event', 'summary']);
+          const proc = getVal(['process_commandline', 'process', 'proceso', 'commandline', 'cmd']);
+
+          let mitre = 'T1059';
+          if (desc.includes('failed to log on') || desc.includes('bad password')) mitre = 'T1110';
+          if (desc.includes('vssadmin') || desc.includes('delete shadows')) mitre = 'T1490';
+          if (desc.includes('PowerShell') || desc.includes('Script Block')) mitre = 'T1059';
+          if (desc.includes('share') || desc.includes('PsExec')) mitre = 'T1021';
+          if (desc.includes('Special privileges')) mitre = 'T1068';
 
           return {
             id: idx + 1,
-            timestamp: obj.timestamp || obj.fecha || new Date().toISOString().replace('T', ' ').slice(0, 19),
-            host: obj.host || obj.equipo || `SRV-NODE-${(idx % 4) + 1}`,
-            user: obj.user || obj.usuario || 'admin_domain',
-            src_ip: obj.src_ip || obj.ip_origen || `10.10.${(idx % 3) + 1}.${10 + idx}`,
-            dst_ip: obj.dst_ip || obj.ip_destino || '203.0.113.88',
-            event_type: evtType,
+            timestamp: getVal(['timestamp', 'fecha', 'time', 'date']) || new Date().toISOString().replace('T', ' ').slice(0, 19),
+            host: getVal(['hostname', 'host', 'equipo', 'computer']) || `SRV-NODE-${(idx % 4) + 1}`,
+            user: getVal(['user', 'usuario', 'account', 'username']) || 'N/A',
+            src_ip: getVal(['source_ip', 'src_ip', 'ip_origen', 'source']) || '0.0.0.0',
+            dst_ip: getVal(['destination', 'dst_ip', 'ip_destino', 'dest']) || '0.0.0.0',
+            event_type: desc || 'Actividad Anómala',
             severity: sev,
             mitre_id: mitre,
-            process: obj.process || obj.proceso || 'powershell.exe',
-            summary: obj.summary || obj.descripcion || `Actividad registrada en ${obj.host || 'servidor'}.`,
+            process: proc || 'N/A',
+            summary: desc || 'Evento detectado',
             raw_payload: JSON.stringify(row, null, 2)
           };
         });
@@ -85,19 +97,15 @@ export default function App() {
         setActiveTab('dashboard');
       };
       reader.readAsBinaryString(file);
-    } 
-    // Si es un CSV normal, usamos el lector de texto tradicional
-    else {
+    } else {
       const reader = new FileReader();
       reader.onload = (evt) => {
         const text = evt.target.result;
         const lines = text.split('\n').filter(line => line.trim().length > 0);
-        
         if (lines.length <= 1) {
           handleLoadSampleLogs();
           return;
         }
-
         const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
         const parsedLogs = lines.slice(1).map((line, idx) => {
           const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
@@ -125,11 +133,9 @@ export default function App() {
             raw_payload: JSON.stringify(obj, null, 2)
           };
         });
-
         setLogs(parsedLogs);
         setActiveTab('dashboard');
       };
-
       reader.readAsText(file);
     }
   };
@@ -218,11 +224,28 @@ export default function App() {
     const critical = logs.filter(l => l.severity === 'Crítico').length;
     const high = logs.filter(l => l.severity === 'Alto').length;
     const medium = logs.filter(l => l.severity === 'Medio').length;
-    const low = logs.filter(l => l.severity === 'Bajo').length;
+    const low = logs.filter(l => l.severity === 'Bajo' || l.severity === 'Informacional').length;
 
-    const threatScore = total > 0 ? Math.min(100, Math.round(((critical * 40 + high * 25 + medium * 10) / (total * 40)) * 100)) : 0;
+    let threatScore = 0;
+    if (total > 0) {
+      const rawScore = ((critical * 40 + high * 25 + medium * 10) / (total * 40)) * 100;
+      threatScore = Math.min(100, Math.round(rawScore));
+    }
+    if (critical > 0 && threatScore === 0) threatScore = 80;
 
     return { total, critical, high, medium, low, threatScore };
+  }, [logs]);
+
+  const topAttackers = useMemo(() => {
+    const ipCounts = {};
+    logs.forEach(l => {
+      if (l.src_ip && l.src_ip !== '0.0.0.0' && l.src_ip !== 'N/A') {
+        ipCounts[l.src_ip] = (ipCounts[l.src_ip] || 0) + 1;
+      }
+    });
+    return Object.entries(ipCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
   }, [logs]);
 
   const filteredLogs = useMemo(() => {
@@ -332,7 +355,6 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
       }
     }
 
-    // Fallback Engine
     setTimeout(() => {
       setAiReportData({
         contextAndRisk: `Se analizaron un total de ${logs.length} eventos de registro provenientes de la infraestructura interna y de conexiones externas. El conjunto de hallazgos indica un riesgo global CRÍTICO, evidenciando intentos de escalamiento de privilegios, movimiento lateral y ejecución de comandos sospechosos que apuntan a una campaña de compromiso avanzado.`,
@@ -489,7 +511,6 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
           y += boxHeight + 16;
         };
 
-        // --- INICIO DEL DOCUMENTO ---
         addHeader();
 
         doc.setFillColor(245, 247, 250);
@@ -511,7 +532,6 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
         doc.text('CRÍTICO', margin + 230, y + 42);
         y += 75;
 
-        // Sección 1
         renderSectionHeader('1. Resumen Ejecutivo');
         renderTable(
           ['Métrica', 'Detalle'],
@@ -521,7 +541,6 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
           ]
         );
 
-        // Sección 2
         forceNewPage();
         renderSectionHeader('2. Análisis Técnico Forense de Amenazas');
         renderTable(
@@ -534,7 +553,6 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
           ]
         );
 
-        // Sección 3
         forceNewPage();
         renderSectionHeader('3. Matriz de Indicadores de Compromiso (IoCs)');
         renderTable(
@@ -547,7 +565,6 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
           ]
         );
 
-        // Sección 4
         forceNewPage();
         renderSectionHeader('4. Plan de Remediación y Mitigación (SLA)');
         renderSlaBox('Acciones Inmediatas', 'SLA < 1 hora', aiReportData.slaImmediate, 220, 38, 38);
@@ -578,6 +595,19 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
       }
     }, 300);
   };
+
+  // Agrupación de MITRE por Táctica para la nueva vista
+  const mitreByTactic = useMemo(() => {
+    const grouped = {};
+    logs.forEach(l => {
+      const info = mitreDictionary[l.mitre_id] || { tactic: 'Otras Técnicas' };
+      if (!grouped[info.tactic]) grouped[info.tactic] = [];
+      if (!grouped[info.tactic].includes(l.mitre_id)) {
+        grouped[info.tactic].push(l.mitre_id);
+      }
+    });
+    return grouped;
+  }, [logs]); // <--- El aviso continúa, pero podemos silenciarlo
 
   return (
     <div className="min-h-screen bg-[#050b14] flex flex-col font-sans selection:bg-cyan-900 selection:text-white">
@@ -732,6 +762,57 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
                   </div>
                 </div>
 
+                {/* NUEVOS WIDGETS DE DASHBOARD */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  
+                  {/* Gráfico de Dona Severidad */}
+                  <div className="bg-[#081324] border border-[#142848] p-5 rounded-xl flex flex-col items-center justify-center shadow-lg">
+                    <h3 className="text-xs font-bold text-white font-mono mb-4 self-start w-full border-b border-[#142848] pb-2">DISTRIBUCIÓN DE SEVERIDAD</h3>
+                    <div className="relative w-32 h-32 rounded-full" style={{
+                      background: `conic-gradient(
+                        #ef4444 0% ${(metrics.critical/metrics.total)*100}%, 
+                        #f59e0b ${(metrics.critical/metrics.total)*100}% ${((metrics.critical+metrics.high)/metrics.total)*100}%, 
+                        #06b6d4 ${((metrics.critical+metrics.high)/metrics.total)*100}% 100%
+                      )`
+                    }}>
+                      <div className="absolute inset-2 bg-[#081324] rounded-full flex items-center justify-center flex-col">
+                        <span className="text-xl font-bold text-white font-mono">{metrics.total}</span>
+                        <span className="text-[9px] text-slate-400 font-mono">TOTAL</span>
+                      </div>
+                    </div>
+                    <div className="flex w-full justify-between mt-4 text-[10px] font-mono">
+                      <div className="flex items-center gap-1"><div className="w-2 h-2 bg-red-500 rounded-full"></div> Críticos ({metrics.critical})</div>
+                      <div className="flex items-center gap-1"><div className="w-2 h-2 bg-amber-500 rounded-full"></div> Altos ({metrics.high})</div>
+                      <div className="flex items-center gap-1"><div className="w-2 h-2 bg-cyan-500 rounded-full"></div> Medios ({metrics.medium + metrics.low})</div>
+                    </div>
+                  </div>
+
+                  {/* Top 5 IPs */}
+                  <div className="bg-[#081324] border border-[#142848] p-5 rounded-xl space-y-4 shadow-lg col-span-2">
+                    <h3 className="text-xs font-bold text-white font-mono flex items-center gap-2 border-b border-[#142848] pb-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-400" /> TOP 5 IPs DE ORIGEN (ATACANTES)
+                    </h3>
+                    <div className="space-y-3">
+                      {topAttackers.map(([ip, count]) => {
+                        const percentage = Math.round((count / metrics.total) * 100);
+                        return (
+                          <div key={ip} className="space-y-1">
+                            <div className="flex justify-between text-xs font-mono">
+                              <span className="text-cyan-300">{ip}</span>
+                              <span className="text-slate-400">{count} eventos ({percentage}%)</span>
+                            </div>
+                            <div className="w-full bg-[#040912] rounded-full h-1.5 overflow-hidden">
+                              <div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${percentage}%` }}></div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {topAttackers.length === 0 && <span className="text-xs text-slate-500 font-mono">No hay IPs registradas.</span>}
+                    </div>
+                  </div>
+
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-[#081324] border border-[#142848] p-5 rounded-xl space-y-3 shadow-lg">
                     <h3 className="text-xs font-bold text-white font-mono flex items-center gap-2">
@@ -840,10 +921,37 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
         )}
 
         {activeTab === 'incidents' && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="border-b border-[#142642] pb-4">
               <h1 className="text-xl font-bold text-white font-mono tracking-tight">GESTIÓN DE INCIDENTES</h1>
+              <p className="text-xs text-slate-400">Estado operativo de los incidentes detectados y su evolución.</p>
             </div>
+
+            {/* Nuevo panel de estado SLA */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="bg-[#081324] border border-[#142848] rounded-xl p-5 flex items-center justify-between shadow-lg">
+                <div>
+                  <p className="text-[11px] text-slate-400 font-mono">Incidentes Abiertos</p>
+                  <p className="text-2xl font-bold text-red-400 font-mono mt-1">2</p>
+                </div>
+                <AlertTriangle className="w-8 h-8 text-red-500/50" />
+              </div>
+              <div className="bg-[#081324] border border-[#142848] rounded-xl p-5 flex items-center justify-between shadow-lg">
+                <div>
+                  <p className="text-[11px] text-slate-400 font-mono">En Contención</p>
+                  <p className="text-2xl font-bold text-amber-400 font-mono mt-1">1</p>
+                </div>
+                <Shield className="w-8 h-8 text-amber-500/50" />
+              </div>
+              <div className="bg-[#081324] border border-[#142848] rounded-xl p-5 flex items-center justify-between shadow-lg">
+                <div>
+                  <p className="text-[11px] text-slate-400 font-mono">Resueltos (Últ. 24h)</p>
+                  <p className="text-2xl font-bold text-emerald-400 font-mono mt-1">5</p>
+                </div>
+                <CheckCircle className="w-8 h-8 text-emerald-500/50" />
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {logs.length === 0 ? (
                 <div className="bg-[#081324] border border-[#142848] rounded-xl p-8 text-center text-slate-400 font-mono text-xs col-span-2">
@@ -851,24 +959,30 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
                 </div>
               ) : (
                 <>
-                  <div onClick={() => setSelectedIncident({ id: 'INC-2026-001', title: 'Escalamiento de Privilegios y Movimiento Lateral', status: 'EN INVESTIGACIÓN', severity: 'Crítico', affectedCount: logs.length, hosts: Array.from(new Set(logs.map(l => l.host))).join(', '), users: Array.from(new Set(logs.map(l => l.user))).join(', '), summary: 'Secuencia correlacionada de accesos remotos tipo 3 desde IPs sospechosas, seguida de ejecución de scripts PowerShell no firmados y movimiento SMB.' })} className="bg-[#081324] border border-[#142848] hover:border-cyan-500/60 rounded-xl p-6 space-y-4 shadow-xl cursor-pointer transition">
+                  <div onClick={() => setSelectedIncident({ id: 'INC-2026-001', title: 'Escalamiento de Privilegios y Movimiento Lateral', status: 'EN INVESTIGACIÓN', severity: 'Crítico', affectedCount: logs.length, hosts: Array.from(new Set(logs.map(l => l.host))).join(', '), users: Array.from(new Set(logs.map(l => l.user))).join(', '), summary: 'Secuencia correlacionada de accesos remotos tipo 3 desde IPs sospechosas, seguida de ejecución de scripts PowerShell no firmados y movimiento SMB.' })} className="bg-[#081324] border border-[#142848] hover:border-cyan-500/60 rounded-xl p-6 space-y-4 shadow-xl cursor-pointer transition group">
                     <div className="flex justify-between items-center border-b border-[#142848] pb-3">
-                      <div className="flex items-center space-x-2"><AlertTriangle className="w-5 h-5 text-red-400" /><span className="font-mono text-sm font-bold text-white">INC-2026-001</span></div>
+                      <div className="flex items-center space-x-2"><AlertTriangle className="w-5 h-5 text-red-400" /><span className="font-mono text-sm font-bold text-white group-hover:text-cyan-300 transition">INC-2026-001</span></div>
                       <span className="px-3 py-1 bg-red-950 text-red-400 border border-red-800 rounded text-xs font-mono font-bold">CRÍTICO</span>
                     </div>
-                    <h3 className="text-sm font-bold text-cyan-300 font-mono">Escalamiento y Movimiento Lateral</h3>
+                    <h3 className="text-sm font-bold text-white font-mono">Escalamiento y Movimiento Lateral</h3>
                     <p className="text-xs text-slate-300 font-sans leading-relaxed">Se detectó compromiso de credenciales y desplazamiento entre nodos ({Array.from(new Set(logs.map(l => l.host))).slice(0, 3).join(', ')}).</p>
-                    <div className="text-xs text-cyan-400 font-mono flex items-center justify-between pt-2 border-t border-[#142848]"><span>Abrir Expediente</span><ChevronRight className="w-4 h-4" /></div>
+                    <div className="flex items-center justify-between pt-2 border-t border-[#142848]">
+                      <span className="text-[10px] font-mono text-slate-500">Hace 2 horas</span>
+                      <span className="text-xs text-cyan-400 font-mono flex items-center group-hover:translate-x-1 transition-transform">Abrir Expediente <ChevronRight className="w-4 h-4 ml-1" /></span>
+                    </div>
                   </div>
 
-                  <div onClick={() => setSelectedIncident({ id: 'INC-2026-002', title: 'Destrucción de Copias Shadow (Precursor Ransomware)', status: 'CONTENIDO', severity: 'Crítico', affectedCount: logs.filter(l => l.mitre_id === 'T1490' || l.process.includes('vssadmin')).length || 1, hosts: logs.find(l => l.mitre_id === 'T1490')?.host || 'DB-SRV-02', users: 'SYSTEM', summary: 'Ejecución del comando vssadmin.exe delete shadows /all /quiet con la intención de inhabilitar la recuperación del sistema previo al cifrado.' })} className="bg-[#081324] border border-[#142848] hover:border-cyan-500/60 rounded-xl p-6 space-y-4 shadow-xl cursor-pointer transition">
+                  <div onClick={() => setSelectedIncident({ id: 'INC-2026-002', title: 'Destrucción de Copias Shadow (Precursor Ransomware)', status: 'CONTENIDO', severity: 'Crítico', affectedCount: logs.filter(l => l.mitre_id === 'T1490' || l.process.includes('vssadmin')).length || 1, hosts: logs.find(l => l.mitre_id === 'T1490')?.host || 'DB-SRV-02', users: 'SYSTEM', summary: 'Ejecución del comando vssadmin.exe delete shadows /all /quiet con la intención de inhabilitar la recuperación del sistema previo al cifrado.' })} className="bg-[#081324] border border-[#142848] hover:border-cyan-500/60 rounded-xl p-6 space-y-4 shadow-xl cursor-pointer transition group">
                     <div className="flex justify-between items-center border-b border-[#142848] pb-3">
-                      <div className="flex items-center space-x-2"><ServerCrash className="w-5 h-5 text-amber-400" /><span className="font-mono text-sm font-bold text-white">INC-2026-002</span></div>
+                      <div className="flex items-center space-x-2"><ServerCrash className="w-5 h-5 text-amber-400" /><span className="font-mono text-sm font-bold text-white group-hover:text-cyan-300 transition">INC-2026-002</span></div>
                       <span className="px-3 py-1 bg-amber-950 text-amber-400 border border-amber-800 rounded text-xs font-mono font-bold">ALTO</span>
                     </div>
-                    <h3 className="text-sm font-bold text-cyan-300 font-mono">Inhibición de Recuperación de Sistema</h3>
+                    <h3 className="text-sm font-bold text-white font-mono">Inhibición de Recuperación de Sistema</h3>
                     <p className="text-xs text-slate-300 font-sans leading-relaxed">Invocación directa de herramientas de gestión de volumen para borrar copias de seguridad.</p>
-                    <div className="text-xs text-cyan-400 font-mono flex items-center justify-between pt-2 border-t border-[#142848]"><span>Abrir Expediente</span><ChevronRight className="w-4 h-4" /></div>
+                    <div className="flex items-center justify-between pt-2 border-t border-[#142848]">
+                      <span className="text-[10px] font-mono text-slate-500">Hace 5 horas</span>
+                      <span className="text-xs text-cyan-400 font-mono flex items-center group-hover:translate-x-1 transition-transform">Abrir Expediente <ChevronRight className="w-4 h-4 ml-1" /></span>
+                    </div>
                   </div>
                 </>
               )}
@@ -877,28 +991,36 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
         )}
 
         {activeTab === 'mitre' && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="border-b border-[#142642] pb-4">
               <h1 className="text-xl font-bold text-white font-mono tracking-tight">MATRIZ MITRE ATT&CK</h1>
+              <p className="text-xs text-slate-400">Técnicas identificadas, agrupadas por táctica de adversario.</p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Array.from(new Set(logs.map(l => l.mitre_id))).map((techniqueId) => {
-                const techniqueLogs = logs.filter(l => l.mitre_id === techniqueId);
-                const info = mitreDictionary[techniqueId] || { name: 'Técnica Detectada', tactic: 'Execution', description: 'Actividad sospechosa coincidente con marco MITRE.' };
-                return (
-                  <div key={techniqueId} onClick={() => setSelectedMitre(techniqueId)} className="bg-[#081324] border border-[#142848] hover:border-cyan-500/50 p-5 rounded-xl space-y-3 shadow-xl cursor-pointer transition group flex flex-col justify-between">
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="font-mono text-sm font-bold text-cyan-400 group-hover:text-cyan-300">{techniqueId}: {info.name}</span>
-                        <span className="bg-[#0c1f3c] text-cyan-300 text-[10px] font-mono px-2 py-0.5 rounded border border-cyan-800">{techniqueLogs.length} Evento(s)</span>
-                      </div>
-                      <span className="text-[10px] font-mono text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded inline-block border border-amber-900/40">Táctica: {info.tactic}</span>
-                      <p className="text-xs text-slate-300 font-sans leading-relaxed">{info.description}</p>
-                    </div>
-                    <div className="text-[11px] text-cyan-400 font-mono flex items-center justify-between pt-3 border-t border-[#142848]"><span>Ver Registros</span><ChevronRight className="w-3.5 h-3.5" /></div>
+            
+            <div className="space-y-8">
+              {Object.entries(mitreByTactic).map(([tactic, techniques]) => (
+                <div key={tactic} className="space-y-3">
+                  <h3 className="text-sm font-bold text-cyan-400 font-mono uppercase bg-[#0c1f3c] inline-block px-3 py-1 rounded border border-cyan-800/50">
+                    {tactic}
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {techniques.map(techniqueId => {
+                      const techniqueLogs = logs.filter(l => l.mitre_id === techniqueId);
+                      const info = mitreDictionary[techniqueId] || { name: 'Técnica Detectada', description: 'Actividad sospechosa.' };
+                      return (
+                        <div key={techniqueId} onClick={() => setSelectedMitre(techniqueId)} className="bg-[#081324] border border-[#142848] hover:border-cyan-500/50 p-5 rounded-xl space-y-3 shadow-xl cursor-pointer transition group">
+                          <div className="flex justify-between items-center border-b border-[#142848] pb-2">
+                            <span className="font-mono text-sm font-bold text-cyan-400 group-hover:text-cyan-300">{techniqueId}</span>
+                            <span className="bg-[#0c1f3c] text-cyan-300 text-[10px] font-mono px-2 py-0.5 rounded border border-cyan-800">{techniqueLogs.length} Eventos</span>
+                          </div>
+                          <p className="text-xs font-bold text-white font-sans">{info.name}</p>
+                          <p className="text-[11px] text-slate-400 font-sans leading-relaxed line-clamp-2">{info.description}</p>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -909,11 +1031,14 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
               <h1 className="text-xl font-bold text-white font-mono tracking-tight">TIMELINE CRONOLÓGICO</h1>
             </div>
             <div className="relative border-l border-[#142848] ml-4 space-y-6 pl-6 py-2">
-              {logs.map((l, idx) => (
+              {logs.map((l, index) => (
                 <div key={l.id} className="relative cursor-pointer group" onClick={() => setSelectedLog(l)}>
                   <div className="absolute -left-[31px] top-1.5 w-3 h-3 rounded-full bg-cyan-400 border-2 border-[#050b14] group-hover:scale-125 transition-transform"></div>
                   <div className="bg-[#081324] border border-[#142848] group-hover:border-cyan-500/50 p-4 rounded-xl space-y-2 shadow-xl transition">
-                    <div className="flex items-center justify-between font-mono text-xs text-cyan-400 font-bold"><span>{l.timestamp}</span><span className="text-slate-500">Hito #{idx + 1}</span></div>
+                    <div className="flex items-center justify-between font-mono text-xs text-cyan-400 font-bold">
+                      <span>{l.timestamp}</span>
+                      <span className="text-slate-500">Hito #{index + 1}</span>
+                    </div>
                     <h4 className="text-xs font-bold text-white font-mono">{l.event_type} ({l.mitre_id})</h4>
                     <p className="text-xs text-slate-300 font-sans">{l.summary}</p>
                   </div>
@@ -924,14 +1049,72 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
         )}
 
         {activeTab === 'cases' && (
-          <div className="space-y-4">
-            <div className="border-b border-[#142642] pb-4">
-              <h1 className="text-xl font-bold text-white font-mono tracking-tight">CASOS DE INVESTIGACIÓN</h1>
+          <div className="space-y-6">
+            <div className="border-b border-[#142642] pb-4 flex justify-between items-center">
+              <div>
+                <h1 className="text-xl font-bold text-white font-mono tracking-tight">CASOS DE INVESTIGACIÓN</h1>
+                <p className="text-xs text-slate-400">Gestión de expedientes forenses y cadena de custodia.</p>
+              </div>
+              <button className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold font-mono rounded transition flex items-center gap-2">
+                <Briefcase className="w-4 h-4" /> NUEVO CASO
+              </button>
             </div>
-            <div onClick={() => setSelectedCase({ id: 'CASO-2026-XDR', title: 'Compromiso de Credenciales y Tentativa de Cifrado en Servidores', status: 'ABIERTO', lead: 'Analista SOC Nivel 2', evidenceCount: logs.length, hosts: Array.from(new Set(logs.map(l => l.host))).join(', '), users: Array.from(new Set(logs.map(l => l.user))).join(', ') })} className="bg-[#081324] border border-[#142848] hover:border-cyan-500/50 rounded-xl p-6 space-y-3 cursor-pointer transition shadow-xl">
-              <div className="flex justify-between items-center"><div className="text-xs font-mono text-cyan-400">CASO-2026-XDR</div><span className="px-2.5 py-1 bg-cyan-950 text-cyan-300 border border-cyan-800 rounded text-[10px] font-mono">VER EXPEDIENTE</span></div>
-              <div className="text-sm font-bold text-white font-mono">Investigación de Actividad Anómala de Red</div>
-              <p className="text-xs text-slate-300">Total registros y evidencias asociadas: <strong>{logs.length}</strong></p>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Tarjeta del Caso Principal */}
+              <div onClick={() => setSelectedCase({ id: 'CASO-2026-XDR', title: 'Compromiso de Credenciales y Tentativa de Cifrado en Servidores', status: 'ABIERTO', lead: 'Analista SOC Nivel 2', evidenceCount: logs.length, hosts: Array.from(new Set(logs.map(l => l.host))).join(', '), users: Array.from(new Set(logs.map(l => l.user))).join(', ') })} className="bg-[#081324] border border-[#142848] hover:border-cyan-500/50 rounded-xl p-6 space-y-4 cursor-pointer transition shadow-xl col-span-2 flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <div className="text-[10px] font-mono text-slate-500 mb-1">EXPEDIENTE PRINCIPAL</div>
+                      <div className="text-lg font-bold text-white font-mono">CASO-2026-XDR</div>
+                    </div>
+                    <span className="px-3 py-1 bg-cyan-950 text-cyan-300 border border-cyan-800 rounded text-[10px] font-mono font-bold">ABIERTO</span>
+                  </div>
+                  <h3 className="text-sm text-slate-200 font-sans mb-4">Investigación de Actividad Anómala de Red (Compromiso de Credenciales)</h3>
+                  <div className="flex flex-wrap gap-4 text-xs font-mono">
+                    <div><span className="text-slate-500">Evidencias:</span> <span className="text-cyan-400">{logs.length} logs</span></div>
+                    <div><span className="text-slate-500">Hosts:</span> <span className="text-cyan-400">{Array.from(new Set(logs.map(l => l.host))).length}</span></div>
+                    <div><span className="text-slate-500">Analista:</span> <span className="text-cyan-400">SOC L2</span></div>
+                  </div>
+                </div>
+                <div className="pt-4 border-t border-[#142848] flex justify-between items-center text-xs font-mono text-cyan-400">
+                  <span>Ver cadena de custodia completa</span>
+                  <ChevronRight className="w-4 h-4" />
+                </div>
+              </div>
+
+              {/* Panel de Resumen Forense */}
+              <div className="bg-[#081324] border border-[#142848] rounded-xl p-6 shadow-xl flex flex-col justify-center space-y-4">
+                <h3 className="text-xs font-bold text-white font-mono border-b border-[#142848] pb-2 flex items-center gap-2">
+                  <FileWarning className="w-4 h-4 text-amber-400" /> ESTADO FORENSE
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between text-xs font-mono">
+                    <span className="text-slate-400">Evidencia Recolectada:</span>
+                    <span className="text-emerald-400">100%</span>
+                  </div>
+                  <div className="w-full bg-[#040912] rounded-full h-1.5">
+                    <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: '100%' }}></div>
+                  </div>
+                  
+                  <div className="flex justify-between text-xs font-mono mt-4">
+                    <span className="text-slate-400">Análisis de IA:</span>
+                    <span className="text-emerald-400">Completado</span>
+                  </div>
+                  <div className="w-full bg-[#040912] rounded-full h-1.5">
+                    <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: '100%' }}></div>
+                  </div>
+
+                  <div className="flex justify-between text-xs font-mono mt-4">
+                    <span className="text-slate-400">Contención (SLA):</span>
+                    <span className="text-amber-400">En Progreso</span>
+                  </div>
+                  <div className="w-full bg-[#040912] rounded-full h-1.5">
+                    <div className="bg-amber-500 h-1.5 rounded-full" style={{ width: '45%' }}></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -1097,7 +1280,10 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
               <p><strong className="text-white">Usuarios Involucrados:</strong> {selectedIncident.users}</p>
               <div className="bg-[#040912] p-3 rounded border border-[#142848]"><strong className="text-cyan-400 block mb-1">Evidencia Correlacionada:</strong><p className="text-slate-300 leading-relaxed font-sans text-xs">{selectedIncident.summary}</p></div>
             </div>
-            <div className="pt-2 flex justify-end"><button onClick={() => setSelectedIncident(null)} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded">Cerrar</button></div>
+            <div className="pt-2 flex justify-between items-center">
+              <button className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded flex items-center gap-2"><Download className="w-4 h-4"/> Exportar Reporte</button>
+              <button onClick={() => setSelectedIncident(null)} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded">Cerrar</button>
+            </div>
           </div>
         </div>
       )}
@@ -1113,7 +1299,10 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
               <p><strong className="text-white">Evidencias Totales:</strong> {selectedCase.evidenceCount} registros</p>
               <p><strong className="text-white">Equipos en Observación:</strong> {selectedCase.hosts}</p>
             </div>
-            <div className="pt-2 flex justify-end"><button onClick={() => setSelectedCase(null)} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded">Cerrar</button></div>
+            <div className="pt-2 flex justify-between items-center">
+              <button className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Marcar como Resuelto</button>
+              <button onClick={() => setSelectedCase(null)} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded">Cerrar</button>
+            </div>
           </div>
         </div>
       )}
