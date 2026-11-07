@@ -1,16 +1,35 @@
-# React + Vite
+# 🛡️ SOC Analyzer - Extended Detection & Response (XDR)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+![React](https://img.shields.io/badge/React-18-blue?style=for-the-badge&logo=react)
+![Vite](https://img.shields.io/badge/Vite-5-purple?style=for-the-badge&logo=vite)
+![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
+![Groq](https://img.shields.io/badge/Groq_AI-FF6B6B?style=for-the-badge&logo=ai&logoColor=white)
+![jsPDF](https://img.shields.io/badge/jsPDF-2.5.1-red?style=for-the-badge)
 
-Currently, two official plugins are available:
+**SOC Analyzer** es una aplicación web interactiva diseñada para analistas de ciberseguridad (Blue Team). Permite ingestar logs de seguridad (CSV, JSON, TXT), visualizar métricas de amenazas en tiempo real, correlacionar eventos y generar informes ejecutivos/técnicos automatizados utilizando Inteligencia Artificial (Groq - Llama 3).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## ✨ Características Principales
 
-## React Compiler
+- **📥 Ingesta de Datos Segura:** Sube archivos de logs locales (`.csv`, `.json`, `.txt`) que se procesan 100% en el navegador. Los datos no se envían a ningún servidor externo.
+- **📊 Dashboard Interactivo:** Visualización de Nivel de Riesgo Global, conteo de eventos críticos, hosts afectados y categorización de amenazas.
+- **🎯 Mapeo MITRE ATT&CK:** Identificación automática de técnicas adversarias (T1110, T1068, T1490, etc.) con tácticas asociadas.
+- **⏱️ Timeline Forense:** Reconstrucción cronológica de los eventos para entender la línea de tiempo del atacante.
+- **🤖 Análisis con IA (Groq):** Integración con el modelo `llama-3.3-70b-versatile` para generar un análisis forense profundo, sin resumir y basado estrictamente en los logs.
+- **📄 Generación de Informes PDF:** Exportación de un reporte corporativo en PDF con tablas de Indicadores de Compromiso (IoCs), análisis técnico y planes de mitigación (SLA) con diseño profesional.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🛠️ Tecnologías Utilizadas
 
-## Expanding the ESLint configuration
+- **Frontend:** React 18 + Vite
+- **Estilos:** Tailwind CSS v4
+- **Iconografía:** Lucide React
+- **Generación de PDF:** jsPDF (Construcción nativa sin dependencias externas de tablas para máxima estabilidad)
+- **Inteligencia Artificial:** Groq API (Llama 3 70B)
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 🚀 Instalación y Uso Local
+
+Sigue estos pasos para correr el proyecto en tu máquina:
+
+1. **Clona el repositorio:**
+   ```bash
+   git clone https://github.com/TU_USUARIO/TU_REPOSITORIO.git
+   cd TU_REPOSITORIO
