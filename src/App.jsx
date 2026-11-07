@@ -53,37 +53,43 @@ export default function App() {
         const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
         const parsedLogs = data.map((row, idx) => {
+          // Lector inteligente de columnas (ignora mayúsculas, espacios y guiones)
           const getVal = (keys) => {
             for (let key of keys) {
-              const foundKey = Object.keys(row).find(k => k.toLowerCase() === key.toLowerCase());
+              const foundKey = Object.keys(row).find(k => 
+                k.toLowerCase().replace(/[^a-z0-9]/g, '') === key.toLowerCase().replace(/[^a-z0-9]/g, '')
+              );
               if (foundKey && row[foundKey]) return String(row[foundKey]).trim();
             }
             return '';
           };
 
-          const sevRaw = getVal(['severity', 'severidad', 'level', 'nivel']).toLowerCase();
-          let sev = 'Informacional';
-          if (sevRaw.includes('critic') || sevRaw.includes('high') || sevRaw.includes('alta') || sevRaw.includes('alto')) sev = 'Crítico';
-          else if (sevRaw.includes('warn') || sevRaw.includes('medium') || sevRaw.includes('media') || sevRaw.includes('medio')) sev = 'Alto';
-          else if (sevRaw.includes('fail') || sevRaw.includes('error') || sevRaw.includes('bajo')) sev = 'Medio';
+          // 1. Extraer Severidad de forma flexible
+          let sevRaw = getVal(['severity', 'severidad', 'level', 'nivel', 'risk', 'riesgo']).toLowerCase();
+          let sev = 'Medio'; // Por defecto
+          if (sevRaw.includes('critic') || sevRaw.includes('crític') || sevRaw.includes('high') || sevRaw.includes('alta') || sevRaw.includes('alto') || sevRaw.includes('1')) sev = 'Crítico';
+          else if (sevRaw.includes('warn') || sevRaw.includes('medium') || sevRaw.includes('media') || sevRaw.includes('medio') || sevRaw.includes('2')) sev = 'Alto';
+          else if (sevRaw.includes('info') || sevRaw.includes('bajo') || sevRaw.includes('low') || sevRaw.includes('3')) sev = 'Medio';
 
-          const desc = getVal(['event_description', 'descripcion', 'message', 'msg', 'event', 'summary']);
-          const proc = getVal(['process_commandline', 'process', 'proceso', 'commandline', 'cmd']);
+          // 2. Extraer IPs
+          const srcIp = getVal(['sourceip', 'srcip', 'iporigen', 'source', 'ip', 'origen', 'ipatacante', 'src']);
+          const dstIp = getVal(['destination', 'dstip', 'ipdestino', 'dest', 'destino']);
+          
+          const desc = getVal(['eventdescription', 'descripcion', 'message', 'msg', 'event', 'summary', 'evento']);
+          const proc = getVal(['processcommandline', 'process', 'proceso', 'commandline', 'cmd']);
 
           let mitre = 'T1059';
-          if (desc.includes('failed to log on') || desc.includes('bad password')) mitre = 'T1110';
-          if (desc.includes('vssadmin') || desc.includes('delete shadows')) mitre = 'T1490';
-          if (desc.includes('PowerShell') || desc.includes('Script Block')) mitre = 'T1059';
-          if (desc.includes('share') || desc.includes('PsExec')) mitre = 'T1021';
-          if (desc.includes('Special privileges')) mitre = 'T1068';
+          if (desc.toLowerCase().includes('failed') || desc.toLowerCase().includes('password')) mitre = 'T1110';
+          if (desc.toLowerCase().includes('vssadmin') || desc.toLowerCase().includes('shadows')) mitre = 'T1490';
+          if (desc.toLowerCase().includes('share') || desc.toLowerCase().includes('psexec')) mitre = 'T1021';
 
           return {
             id: idx + 1,
             timestamp: getVal(['timestamp', 'fecha', 'time', 'date']) || new Date().toISOString().replace('T', ' ').slice(0, 19),
-            host: getVal(['hostname', 'host', 'equipo', 'computer']) || `SRV-NODE-${(idx % 4) + 1}`,
-            user: getVal(['user', 'usuario', 'account', 'username']) || 'N/A',
-            src_ip: getVal(['source_ip', 'src_ip', 'ip_origen', 'source']) || '0.0.0.0',
-            dst_ip: getVal(['destination', 'dst_ip', 'ip_destino', 'dest']) || '0.0.0.0',
+            host: getVal(['hostname', 'host', 'equipo', 'computer', 'servidor']) || `SRV-NODE-${(idx % 4) + 1}`,
+            user: getVal(['user', 'usuario', 'account', 'username', 'cuenta']) || 'N/A',
+            src_ip: srcIp || '0.0.0.0',
+            dst_ip: dstIp || '0.0.0.0',
             event_type: desc || 'Actividad Anómala',
             severity: sev,
             mitre_id: mitre,
@@ -98,6 +104,7 @@ export default function App() {
       };
       reader.readAsBinaryString(file);
     } else {
+      // Lector CSV
       const reader = new FileReader();
       reader.onload = (evt) => {
         const text = evt.target.result;
@@ -221,31 +228,16 @@ export default function App() {
 
   const metrics = useMemo(() => {
     const total = logs.length;
-    
-    // Buscamos variaciones de los textos para que sea a prueba de balas
-    const critical = logs.filter(l => {
-      const s = (l.severity || '').toLowerCase();
-      return s.includes('critic') || s.includes('crític') || s.includes('alta') || s.includes('high');
-    }).length;
-
-    const high = logs.filter(l => {
-      const s = (l.severity || '').toLowerCase();
-      return s.includes('warn') || s.includes('medium') || s.includes('media') || s.includes('alto') || s.includes('fail');
-    }).length;
-
-    const medium = logs.filter(l => {
-      const s = (l.severity || '').toLowerCase();
-      return s.includes('info') && !s.includes('high') && !s.includes('warn');
-    }).length;
-    
-    const low = total - critical - high - medium;
+    const critical = logs.filter(l => l.severity === 'Crítico').length;
+    const high = logs.filter(l => l.severity === 'Alto').length;
+    const medium = logs.filter(l => l.severity === 'Medio').length;
+    const low = 0; 
 
     let threatScore = 0;
     if (total > 0) {
       const rawScore = ((critical * 40 + high * 25 + medium * 10) / (total * 40)) * 100;
       threatScore = Math.min(100, Math.round(rawScore));
     }
-    // Si hay eventos críticos pero el score salió bajo, forzamos un mínimo para que se vea el riesgo
     if (critical > 0 && threatScore < 40) threatScore = 75;
 
     return { total, critical, high, medium, low, threatScore };
@@ -611,7 +603,6 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
     }, 300);
   };
 
-  // Agrupación de MITRE por Táctica para la nueva vista
   const mitreByTactic = useMemo(() => {
     const grouped = {};
     logs.forEach(l => {
@@ -622,7 +613,7 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
       }
     });
     return grouped;
-  }, [logs]); // <--- El aviso continúa, pero podemos silenciarlo
+  }, [logs, mitreDictionary]); 
 
   return (
     <div className="min-h-screen bg-[#050b14] flex flex-col font-sans selection:bg-cyan-900 selection:text-white">
@@ -777,10 +768,8 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
                   </div>
                 </div>
 
-                {/* NUEVOS WIDGETS DE DASHBOARD */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                   
-                  {/* Gráfico de Dona Severidad */}
                   <div className="bg-[#081324] border border-[#142848] p-5 rounded-xl flex flex-col items-center justify-center shadow-lg">
                     <h3 className="text-xs font-bold text-white font-mono mb-4 self-start w-full border-b border-[#142848] pb-2">DISTRIBUCIÓN DE SEVERIDAD</h3>
                     <div className="relative w-32 h-32 rounded-full" style={{
@@ -802,7 +791,6 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
                     </div>
                   </div>
 
-                  {/* Top 5 IPs */}
                   <div className="bg-[#081324] border border-[#142848] p-5 rounded-xl space-y-4 shadow-lg col-span-2">
                     <h3 className="text-xs font-bold text-white font-mono flex items-center gap-2 border-b border-[#142848] pb-2">
                       <AlertTriangle className="w-4 h-4 text-amber-400" /> TOP 5 IPs DE ORIGEN (ATACANTES)
@@ -942,7 +930,6 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
               <p className="text-xs text-slate-400">Estado operativo de los incidentes detectados y su evolución.</p>
             </div>
 
-            {/* Nuevo panel de estado SLA */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div className="bg-[#081324] border border-[#142848] rounded-xl p-5 flex items-center justify-between shadow-lg">
                 <div>
@@ -1076,7 +1063,6 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Tarjeta del Caso Principal */}
               <div onClick={() => setSelectedCase({ id: 'CASO-2026-XDR', title: 'Compromiso de Credenciales y Tentativa de Cifrado en Servidores', status: 'ABIERTO', lead: 'Analista SOC Nivel 2', evidenceCount: logs.length, hosts: Array.from(new Set(logs.map(l => l.host))).join(', '), users: Array.from(new Set(logs.map(l => l.user))).join(', ') })} className="bg-[#081324] border border-[#142848] hover:border-cyan-500/50 rounded-xl p-6 space-y-4 cursor-pointer transition shadow-xl col-span-2 flex flex-col justify-between">
                 <div>
                   <div className="flex justify-between items-start mb-4">
@@ -1099,7 +1085,6 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
                 </div>
               </div>
 
-              {/* Panel de Resumen Forense */}
               <div className="bg-[#081324] border border-[#142848] rounded-xl p-6 shadow-xl flex flex-col justify-center space-y-4">
                 <h3 className="text-xs font-bold text-white font-mono border-b border-[#142848] pb-2 flex items-center gap-2">
                   <FileWarning className="w-4 h-4 text-amber-400" /> ESTADO FORENSE
