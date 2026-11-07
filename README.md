@@ -1,4 +1,4 @@
-# 🛡️ SOC Analyzer - Extended Detection & Response (XDR)
+# 🛡️ SOC Analyzer - Extended Detection & Response
 
 🌐 **[Ver Demo en Vivo en Vercel](https://soc-analyzer-t88g.vercel.app/)**
 
