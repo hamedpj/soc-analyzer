@@ -221,17 +221,32 @@ export default function App() {
 
   const metrics = useMemo(() => {
     const total = logs.length;
-    const critical = logs.filter(l => l.severity === 'Crítico').length;
-    const high = logs.filter(l => l.severity === 'Alto').length;
-    const medium = logs.filter(l => l.severity === 'Medio').length;
-    const low = logs.filter(l => l.severity === 'Bajo' || l.severity === 'Informacional').length;
+    
+    // Buscamos variaciones de los textos para que sea a prueba de balas
+    const critical = logs.filter(l => {
+      const s = (l.severity || '').toLowerCase();
+      return s.includes('critic') || s.includes('crític') || s.includes('alta') || s.includes('high');
+    }).length;
+
+    const high = logs.filter(l => {
+      const s = (l.severity || '').toLowerCase();
+      return s.includes('warn') || s.includes('medium') || s.includes('media') || s.includes('alto') || s.includes('fail');
+    }).length;
+
+    const medium = logs.filter(l => {
+      const s = (l.severity || '').toLowerCase();
+      return s.includes('info') && !s.includes('high') && !s.includes('warn');
+    }).length;
+    
+    const low = total - critical - high - medium;
 
     let threatScore = 0;
     if (total > 0) {
       const rawScore = ((critical * 40 + high * 25 + medium * 10) / (total * 40)) * 100;
       threatScore = Math.min(100, Math.round(rawScore));
     }
-    if (critical > 0 && threatScore === 0) threatScore = 80;
+    // Si hay eventos críticos pero el score salió bajo, forzamos un mínimo para que se vea el riesgo
+    if (critical > 0 && threatScore < 40) threatScore = 75;
 
     return { total, critical, high, medium, low, threatScore };
   }, [logs]);
