@@ -1,5 +1,7 @@
 # 🛡️ SOC Analyzer - Extended Detection & Response (XDR)
 
+🌐 **[Ver Demo en Vivo en Vercel](https://soc-analyzer-t88g.vercel.app/)**
+
 ![React](https://img.shields.io/badge/React-18-blue?style=for-the-badge&logo=react)
 ![Vite](https://img.shields.io/badge/Vite-5-purple?style=for-the-badge&logo=vite)
 ![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
@@ -31,5 +33,5 @@ Sigue estos pasos para correr el proyecto en tu máquina:
 
 1. **Clona el repositorio:**
    ```bash
-   git clone https://github.com/TU_USUARIO/TU_REPOSITORIO.git
-   cd TU_REPOSITORIO
+   git clone https://github.com/hamedpj/soc-analyzer.git
+   cd soc-analyzer
