@@ -53,7 +53,6 @@ export default function App() {
         const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
         const parsedLogs = data.map((row, idx) => {
-          // Lector inteligente de columnas (ignora mayúsculas, espacios y guiones)
           const getVal = (keys) => {
             for (let key of keys) {
               const foundKey = Object.keys(row).find(k => 
@@ -64,14 +63,12 @@ export default function App() {
             return '';
           };
 
-          // 1. Extraer Severidad de forma flexible
           let sevRaw = getVal(['severity', 'severidad', 'level', 'nivel', 'risk', 'riesgo']).toLowerCase();
-          let sev = 'Medio'; // Por defecto
+          let sev = 'Medio'; 
           if (sevRaw.includes('critic') || sevRaw.includes('crític') || sevRaw.includes('high') || sevRaw.includes('alta') || sevRaw.includes('alto') || sevRaw.includes('1')) sev = 'Crítico';
           else if (sevRaw.includes('warn') || sevRaw.includes('medium') || sevRaw.includes('media') || sevRaw.includes('medio') || sevRaw.includes('2')) sev = 'Alto';
           else if (sevRaw.includes('info') || sevRaw.includes('bajo') || sevRaw.includes('low') || sevRaw.includes('3')) sev = 'Medio';
 
-          // 2. Extraer IPs
           const srcIp = getVal(['sourceip', 'srcip', 'iporigen', 'source', 'ip', 'origen', 'ipatacante', 'src']);
           const dstIp = getVal(['destination', 'dstip', 'ipdestino', 'dest', 'destino']);
           
@@ -104,7 +101,6 @@ export default function App() {
       };
       reader.readAsBinaryString(file);
     } else {
-      // Lector CSV
       const reader = new FileReader();
       reader.onload = (evt) => {
         const text = evt.target.result;
@@ -382,7 +378,7 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
     }, 800);
   };
 
-    const generatePdfReport = () => {
+  const generatePdfReport = () => {
     if (!aiReportData) return;
     setIsPdfGenerating(true);
 
@@ -458,7 +454,6 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
           drawTableHeader();
 
           data.forEach((row, index) => {
-            // Convertir a string por si viene algún null o undefined
             const rowText1 = String(row[0] || '');
             const rowText2 = String(row[1] || '');
 
@@ -537,15 +532,15 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(100, 116, 139);
-        doc.text(`Fecha de Emisión: ${new Date().toLocaleString('es-ES')}  |  Clasificación: `, margin + 15, y + 42);
+        // Acortamos el texto para que no choque
+        doc.text(`Fecha: ${new Date().toLocaleString('es-ES')}  |  Clasificación:`, margin + 15, y + 42);
         
-        // Forzamos la posición exacta del texto CRÍTICO
+        // Lo movemos mucho más a la derecha para que no pise nada
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(220, 38, 38);
-        doc.text('CRÍTICO', margin + 240, y + 42);
+        doc.text('CRÍTICO', margin + 380, y + 42);
         y += 75;
 
-        // Sección 1
         renderSectionHeader('1. Resumen Ejecutivo');
         renderTable(
           ['Métrica', 'Detalle'],
@@ -555,7 +550,6 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
           ]
         );
 
-        // Sección 2
         forceNewPage();
         renderSectionHeader('2. Análisis Técnico Forense de Amenazas');
         renderTable(
@@ -568,7 +562,6 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
           ]
         );
 
-        // Sección 3
         forceNewPage();
         renderSectionHeader('3. Matriz de Indicadores de Compromiso (IoCs)');
         renderTable(
@@ -581,7 +574,6 @@ Responde ÚNICAMENTE con un JSON válido en español sin texto introductorio ni 
           ]
         );
 
-        // Sección 4
         forceNewPage();
         renderSectionHeader('4. Plan de Remediación y Mitigación (SLA)');
         renderSlaBox('Acciones Inmediatas', 'SLA < 1 hora', aiReportData.slaImmediate, 220, 38, 38);
