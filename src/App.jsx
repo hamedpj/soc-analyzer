@@ -1,3 +1,4 @@
+import * as XLSX from 'xlsx';
 import { useState, useMemo, useEffect } from 'react';
 import {
   Shield, AlertTriangle, Grid, Briefcase, Sparkles, Key, Download, 
@@ -38,55 +39,99 @@ export default function App() {
     }
   }, []);
 
-  const handleFileUpload = (e) => {
+    const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     setFileName(file.name);
-    const reader = new FileReader();
 
-    reader.onload = (evt) => {
-      const text = evt.target.result;
-      const lines = text.split('\n').filter(line => line.trim().length > 0);
-      
-      if (lines.length <= 1) {
-        handleLoadSampleLogs();
-        return;
-      }
+    // Si es un Excel (.xlsx o .xls), usamos la librería XLSX
+    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const bstr = evt.target.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        // Convierte el Excel a un array de objetos (JSON)
+        const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-      const parsedLogs = lines.slice(1).map((line, idx) => {
-        const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-        const obj = {};
-        headers.forEach((h, i) => {
-          obj[h] = values[i] || '';
+        const parsedLogs = data.map((row, idx) => {
+          // Limpiamos los nombres de las columnas a minúsculas para encontrarlas fácil
+          const obj = {};
+          Object.keys(row).forEach(k => obj[k.trim().toLowerCase()] = row[k]);
+
+          const evtType = obj.event_type || obj.evento || 'Actividad Anómala';
+          const sev = obj.severity || obj.severidad || 'Crítico';
+          const mitre = obj.mitre_id || obj.mitre || 'T1059';
+
+          return {
+            id: idx + 1,
+            timestamp: obj.timestamp || obj.fecha || new Date().toISOString().replace('T', ' ').slice(0, 19),
+            host: obj.host || obj.equipo || `SRV-NODE-${(idx % 4) + 1}`,
+            user: obj.user || obj.usuario || 'admin_domain',
+            src_ip: obj.src_ip || obj.ip_origen || `10.10.${(idx % 3) + 1}.${10 + idx}`,
+            dst_ip: obj.dst_ip || obj.ip_destino || '203.0.113.88',
+            event_type: evtType,
+            severity: sev,
+            mitre_id: mitre,
+            process: obj.process || obj.proceso || 'powershell.exe',
+            summary: obj.summary || obj.descripcion || `Actividad registrada en ${obj.host || 'servidor'}.`,
+            raw_payload: JSON.stringify(row, null, 2)
+          };
         });
 
-        const evtType = obj.event_type || obj.evento || (idx % 2 === 0 ? 'Fuerza Bruta' : 'Comandos y Procesos');
-        const sev = obj.severity || obj.severidad || (idx % 3 === 0 ? 'Crítico' : 'Alto');
-        const mitre = obj.mitre_id || obj.mitre || (sev === 'Crítico' ? 'T1110' : 'T1059');
+        setLogs(parsedLogs);
+        setActiveTab('dashboard');
+      };
+      reader.readAsBinaryString(file);
+    } 
+    // Si es un CSV normal, usamos el lector de texto tradicional
+    else {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const text = evt.target.result;
+        const lines = text.split('\n').filter(line => line.trim().length > 0);
+        
+        if (lines.length <= 1) {
+          handleLoadSampleLogs();
+          return;
+        }
 
-        return {
-          id: idx + 1,
-          timestamp: obj.timestamp || obj.fecha || new Date().toISOString().replace('T', ' ').slice(0, 19),
-          host: obj.host || obj.equipo || `SRV-NODE-${(idx % 4) + 1}`,
-          user: obj.user || obj.usuario || 'admin_domain',
-          src_ip: obj.src_ip || obj.ip_origen || `10.10.${(idx % 3) + 1}.${10 + idx}`,
-          dst_ip: obj.dst_ip || obj.ip_destino || '203.0.113.88',
-          event_type: evtType,
-          severity: sev,
-          mitre_id: mitre,
-          process: obj.process || obj.proceso || 'powershell.exe -ExecutionPolicy Bypass',
-          summary: obj.summary || obj.descripcion || `Actividad anómala registrada en ${obj.host || 'servidor principal'}.`,
-          raw_payload: JSON.stringify(obj, null, 2)
-        };
-      });
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const parsedLogs = lines.slice(1).map((line, idx) => {
+          const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+          const obj = {};
+          headers.forEach((h, i) => {
+            obj[h] = values[i] || '';
+          });
 
-      setLogs(parsedLogs);
-      setActiveTab('dashboard');
-    };
+          const evtType = obj.event_type || obj.evento || (idx % 2 === 0 ? 'Fuerza Bruta' : 'Comandos y Procesos');
+          const sev = obj.severity || obj.severidad || (idx % 3 === 0 ? 'Crítico' : 'Alto');
+          const mitre = obj.mitre_id || obj.mitre || (sev === 'Crítico' ? 'T1110' : 'T1059');
 
-    reader.readAsText(file);
+          return {
+            id: idx + 1,
+            timestamp: obj.timestamp || obj.fecha || new Date().toISOString().replace('T', ' ').slice(0, 19),
+            host: obj.host || obj.equipo || `SRV-NODE-${(idx % 4) + 1}`,
+            user: obj.user || obj.usuario || 'admin_domain',
+            src_ip: obj.src_ip || obj.ip_origen || `10.10.${(idx % 3) + 1}.${10 + idx}`,
+            dst_ip: obj.dst_ip || obj.ip_destino || '203.0.113.88',
+            event_type: evtType,
+            severity: sev,
+            mitre_id: mitre,
+            process: obj.process || obj.proceso || 'powershell.exe -ExecutionPolicy Bypass',
+            summary: obj.summary || obj.descripcion || `Actividad anómala registrada en ${obj.host || 'servidor principal'}.`,
+            raw_payload: JSON.stringify(obj, null, 2)
+          };
+        });
+
+        setLogs(parsedLogs);
+        setActiveTab('dashboard');
+      };
+
+      reader.readAsText(file);
+    }
   };
 
   const handleLoadSampleLogs = () => {
